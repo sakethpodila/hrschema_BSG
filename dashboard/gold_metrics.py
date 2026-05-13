@@ -1,137 +1,179 @@
 import streamlit as st
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
+import pandas as pd
+import duckdb
+
+# ---------------------------------
+# Page Config
+# ---------------------------------
 
 st.set_page_config(
-    page_title="HR Lakehouse Analytics",
-    layout="wide"
+    page_title='dashboard',
+    layout='wide'
 )
 
-st.title("HR Workforce Analytics Lakehouse")
+# ---------------------------------
+# Title
+# ---------------------------------
 
-# -------------------------
-# Spark Session
-# -------------------------
+st.title('HR Schema Dashboard')
 
-spark = SparkSession.builder \
-    .appName("StreamlitLakehouse") \
-    .config(
-        "spark.jars.packages",
-        ",".join([
-            "io.delta:delta-spark_2.12:3.0.0",
-            "org.apache.hadoop:hadoop-aws:3.3.4",
-            "com.amazonaws:aws-java-sdk-bundle:1.12.262"
-        ])
-    ) \
-    .config(
-        "spark.sql.extensions",
-        "io.delta.sql.DeltaSparkSessionExtension"
-    ) \
-    .config(
-        "spark.sql.catalog.spark_catalog",
-        "org.apache.spark.sql.delta.catalog.DeltaCatalog"
-    ) \
-    .config(
-        "spark.hadoop.fs.s3a.endpoint",
-        "http://host.docker.internal:9000"
-    ) \
-    .config(
-        "spark.hadoop.fs.s3a.access.key",
-        "minioadmin"
-    ) \
-    .config(
-        "spark.hadoop.fs.s3a.secret.key",
-        "minioadmin"
-    ) \
-    .config(
-        "spark.hadoop.fs.s3a.path.style.access",
-        "true"
-    ) \
-    .config(
-        "spark.hadoop.fs.s3a.impl",
-        "org.apache.hadoop.fs.s3a.S3AFileSystem"
-    ) \
-    .getOrCreate()
 
-# -------------------------
-# Load Gold Tables
-# -------------------------
+# ---------------------------------
+# DuckDB Connection
+# ---------------------------------
 
-workforce_df = spark.read.format("delta").load(
-    "s3a://lakehouse/gold/workforce_kpis"
+con = duckdb.connect()
+
+# ---------------------------------
+# Load Parquet Files
+# ---------------------------------
+
+workforce_df = con.execute("""
+SELECT *
+FROM read_parquet(
+    'data/workforce_summary_kpis.parquet'
+)
+""").df()
+
+compensation_df = con.execute("""
+SELECT *
+FROM read_parquet(
+    'data/compensation_summary_kpis.parquet'
+)
+""").df()
+
+hiring_df = con.execute("""
+SELECT *
+FROM read_parquet(
+    'data/hiring_trend_kpis.parquet'
+)
+""").df()
+
+# ---------------------------------
+# KPI Metrics
+# ---------------------------------
+
+total_employees = int(
+    workforce_df['total_employees'].sum()
 )
 
-compensation_df = spark.read.format("delta").load(
-    "s3a://lakehouse/gold/compensation_kpis"
+avg_salary = round(
+    workforce_df['avg_salary'].mean(),
+    2
 )
 
-# -------------------------
-# KPI Section
-# -------------------------
+total_departments = workforce_df[
+    'department_name'
+].nunique()
 
-employees_silver_df = spark.read.format("delta").load(
-    "s3a://lakehouse/silver/employees_enriched"
+max_salary = round(
+    compensation_df['max_salary'].max(),
+    2
 )
 
-total_employees = employees_silver_df.count()
-
-avg_salary = employees_silver_df.agg(
-    F.avg("SALARY")
-).collect()[0][0]
-
-total_departments = employees_silver_df.select(
-    "DEPARTMENT_NAME"
-).distinct().count()
-
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 col1.metric(
-    "Total Employees",
+    'Total Employees',
     total_employees
 )
 
 col2.metric(
-    "Average Salary",
-    round(avg_salary, 2)
+    'Average Salary',
+    avg_salary
 )
 
 col3.metric(
-    "Departments",
+    'Departments',
     total_departments
 )
 
-# -------------------------
+col4.metric(
+    'Highest Salary',
+    max_salary
+)
+
+# ---------------------------------
 # Workforce Summary
-# -------------------------
+# ---------------------------------
 
-st.subheader("Workforce KPIs")
+st.subheader('Workforce Summary')
 
 st.dataframe(
-    workforce_df.toPandas()
+    workforce_df,
+    use_container_width=True
 )
 
-# -------------------------
+# ---------------------------------
 # Compensation Summary
-# -------------------------
+# ---------------------------------
 
-st.subheader("Compensation KPIs")
+st.subheader('Compensation Summary')
 
 st.dataframe(
-    compensation_df.toPandas()
+    compensation_df,
+    use_container_width=True
 )
 
-# -------------------------
-# Workforce Chart
-# -------------------------
+# ---------------------------------
+# Hiring Trends
+# ---------------------------------
 
-st.subheader("Employees per Department")
+st.subheader('Hiring Trends')
 
-dept_chart = employees_silver_df.groupBy(
-    "DEPARTMENT_NAME"
-).agg(
-    F.count("*").alias("EMPLOYEE_COUNT")
-).toPandas()
+hiring_chart = hiring_df[
+    ['hire_year', 'total_hires']
+].set_index('hire_year')
 
-st.bar_chart(
-    dept_chart.set_index("DEPARTMENT_NAME")
+st.line_chart(hiring_chart)
+
+# ---------------------------------
+# Employees per Department
+# ---------------------------------
+
+st.subheader('Employees per Department')
+
+dept_chart = workforce_df[
+    ['department_name', 'total_employees']
+].set_index('department_name')
+
+st.bar_chart(dept_chart)
+
+# ---------------------------------
+# Regional Workforce Distribution
+# ---------------------------------
+
+st.subheader('Regional Workforce Distribution')
+
+region_chart = workforce_df.groupby(
+    'region_name'
+)['total_employees'].sum()
+
+st.bar_chart(region_chart)
+
+# ---------------------------------
+# Top Paying Departments
+# ---------------------------------
+
+st.subheader('Top Paying Departments')
+
+top_departments = workforce_df.sort_values(
+    by='avg_salary',
+    ascending=False
 )
+
+st.dataframe(
+    top_departments[
+        [
+            'department_name',
+            'avg_salary',
+            'max_salary'
+        ]
+    ],
+    use_container_width=True
+)
+
+# ---------------------------------
+# Architecture Overview
+# ---------------------------------
+
