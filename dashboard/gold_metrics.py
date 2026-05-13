@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import duckdb
+from pathlib import Path
 
 # ---------------------------------
 # Page Config
@@ -17,7 +18,8 @@ st.set_page_config(
 
 st.title('HR Schema Dashboard')
 
-
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
 # ---------------------------------
 # DuckDB Connection
 # ---------------------------------
@@ -28,24 +30,24 @@ con = duckdb.connect()
 # Load Parquet Files
 # ---------------------------------
 
-workforce_df = con.execute("""
+workforce_df = con.execute(f"""
 SELECT *
 FROM read_parquet(
-    'data/workforce_summary_kpis.parquet'
+    '{DATA_DIR / "workforce_summary_kpis.parquet"}'
 )
 """).df()
 
-compensation_df = con.execute("""
+compensation_df = con.execute(f"""
 SELECT *
 FROM read_parquet(
-    'data/compensation_summary_kpis.parquet'
+    '{DATA_DIR / "compensation_summary_kpis.parquet"}'
 )
 """).df()
 
-hiring_df = con.execute("""
+hiring_df = con.execute(f"""
 SELECT *
 FROM read_parquet(
-    'data/hiring_trend_kpis.parquet'
+    '{DATA_DIR / "hiring_trend_kpis.parquet"}'
 )
 """).df()
 
