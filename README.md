@@ -132,28 +132,6 @@ It includes:
 
 ---
 
-# Project Structure
-
-```text
-hr-lakehouse-project/
-├── dashboard/
-│   ├── app.py
-│   ├── requirements.txt
-│   ├── data/
-│
-├── extract/
-├── notebooks/
-├── spark/
-│   ├── docker-compose.yml
-│   ├── requirements.txt
-│
-├── README.md
-├── .gitignore
-```
-
----
-
-
 
 # Future Improvements
 
